@@ -307,6 +307,30 @@ class ImzMLParser:
         intensity_string = self.m.read(lengths[1])
         return mz_string, intensity_string
 
+    def get_mz_range(self):
+        """
+        Reads first and last m/z values of each spectrum to compute the range.
+
+        Output:
+
+        min_mz:
+            minimal m/z occuring in the data
+        max_mz:
+            maximal m/z occuring in the data
+        """
+        mz_string = ""
+        mz_size = self.sizeDict[self.mzPrecision]
+        n = 0
+        for i, _ in enumerate(self.coordinates):
+            self.m.seek(self.mzOffsets[i])
+            mz_string += self.m.read(mz_size)
+            self.m.seek(self.mzOffsets[i] + (self.mzLengths[i] - 1) * mz_size)
+            mz_string += self.m.read(mz_size)
+            n += 2
+
+        mz_fmt = '<' + str(n) + self.mzPrecision
+        mzs = struct.unpack(mz_fmt, mz_string)
+        return min(mzs), max(mzs)
 
 def getionimage(p, mz_value, tol=0.1, z=None, reduce_func=sum):
     """
