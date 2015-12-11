@@ -17,7 +17,7 @@
 from bisect import bisect_left
 
 try:
-    from lxml.etree import ElementTree
+    from lxml import etree as ElementTree
 except ImportError:
     try:
         from xml.etree import cElementTree as ElementTree
