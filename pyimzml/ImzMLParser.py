@@ -1,4 +1,4 @@
-# -*- coding: UTF-8 -*-
+# -*- coding: utf-8 -*-
 
 # Copyright 2015 Dominik Fay
 #
@@ -83,6 +83,7 @@ class ImzMLParser:
             self.m = f
         self.mzPrecision, self.intensityPrecision = self.readformats()
         self.readspectrummeta()
+        self._fix_offsets()
         # Dict for basic imzML metadata other than those required for reading
         # spectra. See method readimzmlmeta()
         self.imzmldict = self.readimzmlmeta()
@@ -179,6 +180,22 @@ class ImzMLParser:
                 self.coordinates.append((int(x), int(y), int(z)))
             except AttributeError:
                 self.coordinates.append((int(x), int(y)))
+
+    def _fix_offsets(self):
+        # there are people in this world who use int32_t instead of uint64_t in most inappropriate places
+        def fix(array):
+            fixed = []
+            delta = 0
+            prev_value = float('nan')
+            for value in array:
+                if value < 0 and prev_value >= 0:
+                    delta += 2**32
+                fixed.append(value + delta)
+                prev_value = value
+            return fixed
+
+        self.mzOffsets = fix(self.mzOffsets)
+        self.intensityOffsets = fix(self.intensityOffsets)
 
     def readimzmlmeta(self):
         """
