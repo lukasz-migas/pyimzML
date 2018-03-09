@@ -19,7 +19,7 @@ Typical usage pattern is as follows:
 
     from pyimzml.ImzMLWriter import ImzMLWriter
 
-    with ImzMLWriter('output.imzML') as w:
+    with ImzMLWriter('output.imzML') as writer:
         for mzs, intensities, coords in my_spectra:
             # writes data to the .ibd file
             writer.addSpectrum(mzs, intensities, coords)
