@@ -36,10 +36,9 @@ class ImzMLParser(unittest.TestCase):
 
     def test_getspectrum(self):
         for parse_lib, data_name, imzml_path, ibd_path in ALL_TEST_CASES:
-            with self.subTest(parse_lib=parse_lib, data=data_name),\
+            with self.subTest(parse_lib=parse_lib, data=data_name), \
                  imzmlp.ImzMLParser(imzml_path, parse_lib=parse_lib) as parser:
-
-                mzs, ints = parser.getspectrum(4)
+                mzs, ints = parser.get_spectrum(4)
 
                 assert len(parser.coordinates) == 9
                 assert mzs.dtype == np.float32
@@ -53,12 +52,11 @@ class ImzMLParser(unittest.TestCase):
 
     def test_files_instead_of_paths(self):
         for parse_lib, data_name, imzml_path, ibd_path in ALL_TEST_CASES:
-            with self.subTest(parse_lib=parse_lib, data=data_name),\
-                 open(imzml_path, 'rb') as imzml_file,\
-                 open(ibd_path, 'rb') as ibd_file,\
-                 imzmlp.ImzMLParser(imzml_file, parse_lib=parse_lib, ibd_file=ibd_file) as parser:
-
-                mzs, ints = parser.getspectrum(4)
+            with self.subTest(parse_lib=parse_lib, data=data_name), \
+                 open(imzml_path, 'rb') as imzml_file, \
+                    open(ibd_path, 'rb') as ibd_file, \
+                    imzmlp.ImzMLParser(imzml_file, parse_lib=parse_lib, ibd_file=ibd_file) as parser:
+                mzs, ints = parser.get_spectrum(4)
 
                 assert len(parser.coordinates) == 9
                 assert len(mzs) > 0
@@ -69,11 +67,10 @@ class PortableSpectrumReader(unittest.TestCase):
     def test_read_file(self):
         spectrum_idx = 4
         for parse_lib, data_name, imzml_path, ibd_path in ALL_TEST_CASES:
-            with self.subTest(parse_lib=parse_lib, data=data_name),\
-                 imzmlp.ImzMLParser(imzml_path, parse_lib=parse_lib) as normal_parser,\
-                 open(ibd_path, 'rb') as ibd_file:
-
-                normal_mzs, normal_ints = normal_parser.getspectrum(spectrum_idx)
+            with self.subTest(parse_lib=parse_lib, data=data_name), \
+                 imzmlp.ImzMLParser(imzml_path, parse_lib=parse_lib) as normal_parser, \
+                    open(ibd_path, 'rb') as ibd_file:
+                normal_mzs, normal_ints = normal_parser.get_spectrum(spectrum_idx)
 
                 detached_parser = imzmlp.ImzMLParser(imzml_path, parse_lib=parse_lib, ibd_file=None)
                 portable_reader = detached_parser.portable_spectrum_reader()
@@ -87,11 +84,12 @@ class PortableSpectrumReader(unittest.TestCase):
 
 class ImzMLWriter(unittest.TestCase):
     def test_simple_write(self):
-        mzs = np.linspace(100,1000,20)
+        mzs = np.linspace(100, 1000, 20)
         ints = np.random.rand(mzs.shape[0])
-        coords = [1,1,1]
+        coords = [1, 1, 1]
         with imzmlw.ImzMLWriter("test.mzML", mode="processed") as imzml:
             imzml.addSpectrum(mzs, ints, coords=coords)
+
 
 if __name__ == '__main__':
     unittest.main()

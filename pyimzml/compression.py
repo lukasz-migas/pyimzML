@@ -1,9 +1,9 @@
 import zlib
 
+
 class NoCompression(object):
-    """
-    No compression.
-    """
+    """No compression"""
+
     def __init__(self):
         pass
 
@@ -18,14 +18,14 @@ class NoCompression(object):
 
     name = "no compression"
 
+
 class ZlibCompression(object):
-    """
-    Zlib compression with optional rounding of values.
-    Rounding helps the compression, but is lossy.
+    """Zlib compression with optional rounding of values. Rounding helps the compression, but is lossy.
 
     :param round_amt:
         Number of digits after comma. None means no rounding.
     """
+
     def __init__(self, round_amt=None):
         self.round_amt = round_amt
 

@@ -11,141 +11,8 @@ from collections import namedtuple, OrderedDict, defaultdict
 from wheezy.template import Engine, CoreExtension, DictLoader
 
 from pyimzml.compression import NoCompression, ZlibCompression
+from pyimzml.template import IMZML_TEMPLATE
 
-IMZML_TEMPLATE = """\
-@require(uuid, sha1sum, mz_data_type, int_data_type, run_id, spectra, mode, obo_codes, obo_names, mz_compression, int_compression, polarity, spec_type, scan_direction, scan_pattern, scan_type, line_scan_direction)
-<?xml version="1.0" encoding="ISO-8859-1"?>
-<mzML xmlns="http://psi.hupo.org/ms/mzml" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://psi.hupo.org/ms/mzml http://psidev.info/files/ms/mzML/xsd/mzML1.1.0_idx.xsd" version="1.1">
-  <cvList count="2">
-    <cv uri="http://psidev.cvs.sourceforge.net/*checkout*/psidev/psi/psi-ms/mzML/controlledVocabulary/psi-ms.obo" fullName="Proteomics Standards Initiative Mass Spectrometry Ontology" id="MS" version="3.65.0"/>
-    <cv uri="http://obo.cvs.sourceforge.net/*checkout*/obo/obo/ontology/phenotype/unit.obo" fullName="Unit Ontology" id="UO" version="12:10:2011"/>
-  </cvList>
-
-  <fileDescription>
-    <fileContent>
-      <cvParam cvRef="MS" accession="MS:1000579" name="MS1 spectrum" value=""/>
-      @if spec_type=='centroid':
-      <cvParam cvRef="MS" accession="MS:1000127" name="centroid spectrum" value=""/>
-      @elif spec_type=='profile':
-      <cvParam cvRef="MS" accession="MS:1000128" name="profile spectrum" value=""/>
-      @end
-      <cvParam cvRef="IMS" accession="IMS:@obo_codes[mode]" name="@mode" value=""/>
-      <cvParam cvRef="IMS" accession="IMS:1000080" name="universally unique identifier" value="@uuid"/>
-      <cvParam cvRef="IMS" accession="IMS:1000091" name="ibd SHA-1" value="@sha1sum"/>
-    </fileContent>
-  </fileDescription>
-
-  <referenceableParamGroupList count="4">
-    <referenceableParamGroup id="mzArray">
-      <cvParam cvRef="MS" accession="MS:@obo_codes[mz_compression]" name="@mz_compression" value=""/>
-      <cvParam cvRef="MS" accession="MS:1000514" name="m/z array" unitCvRef="MS" unitAccession="MS:1000040" unitName="m/z"/>
-      <cvParam cvRef="MS" accession="MS:@obo_codes[mz_data_type]" name="@mz_data_type" value=""/>
-      <cvParam cvRef="IMS" accession="IMS:1000101" name="external data" value="true"/>
-    </referenceableParamGroup>
-    <referenceableParamGroup id="intensityArray">
-      <cvParam cvRef="MS" accession="MS:@obo_codes[int_data_type]" name="@int_data_type" value=""/>
-      <cvParam cvRef="MS" accession="MS:1000515" name="intensity array" unitCvRef="MS" unitAccession="MS:1000131" unitName="number of detector counts"/>
-      <cvParam cvRef="MS" accession="MS:@obo_codes[int_compression]" name="@int_compression" value=""/>
-      <cvParam cvRef="IMS" accession="IMS:1000101" name="external data" value="true"/>
-    </referenceableParamGroup>
-    <referenceableParamGroup id="scan1">
-      <cvParam cvRef="MS" accession="MS:1000093" name="increasing m/z scan"/>
-      <cvParam cvRef="MS" accession="MS:1000512" name="filter string" value=""/>
-    </referenceableParamGroup>
-    <referenceableParamGroup id="spectrum1">
-      <cvParam cvRef="MS" accession="MS:1000579" name="MS1 spectrum" value=""/>
-      <cvParam cvRef="MS" accession="MS:1000511" name="ms level" value="0"/>
-      @if spec_type=='centroid':
-      <cvParam cvRef="MS" accession="MS:1000127" name="centroid spectrum" value=""/>
-      @elif spec_type=='profile':
-      <cvParam cvRef="MS" accession="MS:1000128" name="profile spectrum" value=""/>
-      @end
-      @if polarity=='positive':
-      <cvParam cvRef="MS" accession="MS:1000130" name="positive scan" value=""/>
-      @elif polarity=='negative':
-      <cvParam cvRef="MS" accession="MS:1000129" name="negative scan" value=""/>
-      @end
-    </referenceableParamGroup>
-  </referenceableParamGroupList>
-
-  <softwareList count="1">
-    <software id="pyimzml" version="0.0001">
-      <cvParam cvRef="MS" accession="MS:1000799" name="custom unreleased software tool" value="pyimzml exporter"/>
-    </software>
-  </softwareList>
-
-  <scanSettingsList count="1">
-    <scanSettings id="scanSettings1">
-      <cvParam cvRef="IMS" accession="IMS:@obo_codes[scan_direction]" name="@obo_names[scan_direction]"/>
-      <cvParam cvRef="IMS" accession="IMS:@obo_codes[scan_pattern]" name="@obo_names[scan_pattern]"/>
-      <cvParam cvRef="IMS" accession="IMS:@obo_codes[scan_type]" name="@obo_names[scan_type]"/>
-      <cvParam cvRef="IMS" accession="IMS:@obo_codes[line_scan_direction]" name="@obo_names[line_scan_direction]"/>
-      <cvParam cvRef="IMS" accession="IMS:1000042" name="max count of pixels x" value="@{(max(s.coords[0] for s in spectra))!!s}"/>
-      <cvParam cvRef="IMS" accession="IMS:1000043" name="max count of pixels y" value="@{(max(s.coords[1] for s in spectra))!!s}"/>
-    </scanSettings>
-  </scanSettingsList>
-
-  <instrumentConfigurationList count="1">
-    <instrumentConfiguration id="IC1">
-    </instrumentConfiguration>
-  </instrumentConfigurationList>
-
-  <dataProcessingList count="1">
-    <dataProcessing id="export_from_pyimzml">
-      <processingMethod order="0" softwareRef="pyimzml">
-        <cvParam cvRef="MS" accession="MS:1000530" name="file format conversion" value="Output to imzML"/>
-      </processingMethod>
-    </dataProcessing>
-  </dataProcessingList>
-
-  <run defaultInstrumentConfigurationRef="IC1" id="@run_id">
-    <spectrumList count="@{len(spectra)!!s}" defaultDataProcessingRef="export_from_pyimzml">
-      @for index, s in enumerate(spectra):
-      <spectrum defaultArrayLength="0" id="spectrum=@{(index+1)!!s}" index="@{(index+1)!!s}">
-        <referenceableParamGroupRef ref="spectrum1"/>
-        <cvParam cvRef="MS" accession="MS:1000528" name="lowest observed m/z" value="@{s.mz_min!!s}" unitCvRef="MS" unitAccession="MS:1000040" unitName="m/z"/>
-        <cvParam cvRef="MS" accession="MS:1000527" name="highest observed m/z" value="@{s.mz_max!!s}" unitCvRef="MS" unitAccession="MS:1000040" unitName="m/z"/>
-        <cvParam cvRef="MS" accession="MS:1000504" name="base peak m/z" value="@{s.mz_base!!s}" unitCvRef="MS" unitAccession="MS:1000040" unitName="m/z"/>
-        <cvParam cvRef="MS" accession="MS:1000505" name="base peak intensity" value="@{s.int_base!!s}" unitCvRef="MS" unitAccession="MS:1000131" unitName="number of counts"/>
-        <cvParam cvRef="MS" accession="MS:1000285" name="total ion current" value="@{s.int_tic!!s}"/>
-        <scanList count="1">
-          <cvParam accession="MS:1000795" cvRef="MS" name="no combination"/>
-          <scan instrumentConfigurationRef="instrumentConfiguration0">
-            <referenceableParamGroupRef ref="scan1"/>
-            <cvParam accession="IMS:1000050" cvRef="IMS" name="position x" value="@{s.coords[0]!!s}"/>
-            <cvParam accession="IMS:1000051" cvRef="IMS" name="position y" value="@{s.coords[1]!!s}"/>
-            @if len(s.coords) == 3:
-            <cvParam accession="IMS:1000052" cvRef="IMS" name="position z" value="@{s.coords[2]!!s}"/>
-            @end
-            @if s.userParams:
-                @for up in s.userParams:
-                <userParam name="@up['name']" value="@up['value']"/> 
-                @end
-            @end
-          </scan>
-        </scanList>
-        <binaryDataArrayList count="2">
-          <binaryDataArray encodedLength="0">
-            <referenceableParamGroupRef ref="mzArray"/>
-            <cvParam accession="IMS:1000103" cvRef="IMS" name="external array length" value="@{s.mz_len!!s}"/>
-            <cvParam accession="IMS:1000104" cvRef="IMS" name="external encoded length" value="@{s.mz_enc_len!!s}"/>
-            <cvParam accession="IMS:1000102" cvRef="IMS" name="external offset" value="@{s.mz_offset!!s}"/>
-            <binary/>
-          </binaryDataArray>
-          <binaryDataArray encodedLength="0">
-            <referenceableParamGroupRef ref="intensityArray"/>
-            <cvParam accession="IMS:1000103" cvRef="IMS" name="external array length" value="@{s.int_len!!s}"/>
-            <cvParam accession="IMS:1000104" cvRef="IMS" name="external encoded length" value="@{s.int_enc_len!!s}"/>
-            <cvParam accession="IMS:1000102" cvRef="IMS" name="external offset" value="@{s.int_offset!!s}"/>
-            <binary/>
-          </binaryDataArray>
-        </binaryDataArrayList>
-      </spectrum>
-      @end
-    </spectrumList>
-  </run>
-</mzML>
-"""
 
 class _MaxlenDict(OrderedDict):
     def __init__(self, *args, **kwargs):
@@ -154,10 +21,16 @@ class _MaxlenDict(OrderedDict):
 
     def __setitem__(self, key, value):
         if self.maxlen is not None and len(self) >= self.maxlen:
-            self.popitem(0) #pop oldest
+            self.popitem(0)  # pop oldest
         OrderedDict.__setitem__(self, key, value)
 
-_Spectrum = namedtuple('_Spectrum', 'coords mz_len mz_offset mz_enc_len int_len int_offset int_enc_len mz_min mz_max mz_base int_base int_tic userParams') #todo: change named tuple to dict and parse xml template properly (i.e. remove hardcoding so parameters can be optional)
+# todo: change named tuple to dict and parse xml template properly (i.e. remove hardcoding so parameters can be
+#       optional)
+_Spectrum = namedtuple(
+    '_Spectrum',
+    "coords mz_len mz_offset mz_enc_len int_len int_offset "
+    "int_enc_len mz_min mz_max mz_base int_base int_tic userParams")
+
 
 class ImzMLWriter(object):
     """
@@ -181,9 +54,11 @@ class ImzMLWriter(object):
         :param mz_compression:
             How to compress the mz array data before saving
     """
+
     def __init__(self, output_filename,
                  mz_dtype=np.float64, intensity_dtype=np.float32, mode="auto", spec_type="centroid",
-                 scan_direction="top_down", line_scan_direction="line_left_right", scan_pattern="one_way", scan_type="horizontal_line", 
+                 scan_direction="top_down", line_scan_direction="line_left_right", scan_pattern="one_way",
+                 scan_type="horizontal_line",
                  mz_compression=NoCompression(), intensity_compression=NoCompression(),
                  polarity=None):
 
@@ -196,11 +71,11 @@ class ImzMLWriter(object):
         self.run_id = os.path.splitext(output_filename)[0]
         self.filename = self.run_id + ".imzML"
         self.ibd_filename = self.run_id + ".ibd"
-        self.xml = open(self.filename, 'w')
-        self.ibd = open(self.ibd_filename, 'wb+')
+        self.xml = open(self.filename, "w")
+        self.ibd = open(self.ibd_filename, "wb+")
         self.sha1 = hashlib.sha1()
         self.uuid = uuid.uuid4()
-        
+
         self.scan_direction = scan_direction
         self.scan_pattern = scan_pattern
         self.scan_type = scan_type
@@ -208,8 +83,8 @@ class ImzMLWriter(object):
 
         self._write_ibd(self.uuid.bytes)
 
-        self.wheezy_engine = Engine(loader=DictLoader({'imzml': IMZML_TEMPLATE}), extensions=[CoreExtension()])
-        self.imzml_template = self.wheezy_engine.get_template('imzml')
+        self.wheezy_engine = Engine(loader=DictLoader({"imzml": IMZML_TEMPLATE}), extensions=[CoreExtension()])
+        self.imzml_template = self.wheezy_engine.get_template("imzml")
         self.spectra = []
         self.first_mz = None
         self.hashes = defaultdict(list)  # mz_hash -> list of mz_data (disk location)
@@ -218,17 +93,18 @@ class ImzMLWriter(object):
 
     @staticmethod
     def _np_type_to_name(dtype):
-        if dtype.__name__.startswith('float'):
+        if dtype.__name__.startswith("float"):
             return "%s-bit float" % dtype.__name__[5:]
-        elif dtype.__name__.startswith('int'):
+        elif dtype.__name__.startswith("int"):
             return "%s-bit integer" % dtype.__name__[3:]
 
     def _setPolarity(self, polarity):
         if polarity:
-            if polarity.lower() in ['positive', 'negative']:
+            if polarity.lower() in ["positive", "negative"]:
                 self.polarity = polarity.lower()
             else:
-                raise ValueError('value for polarity must be one of "positive", "negative". Received: {}'.format(polarity))
+                raise ValueError(
+                    "value for polarity must be one of 'positive', 'negative'. Received: {}".format(polarity))
         else:
             self.polarity = ""
 
@@ -236,7 +112,7 @@ class ImzMLWriter(object):
         spectra = self.spectra
         mz_data_type = self._np_type_to_name(self.mz_dtype)
         int_data_type = self._np_type_to_name(self.intensity_dtype)
-        obo_codes = {"32-bit integer": "1000519", 
+        obo_codes = {"32-bit integer": "1000519",
                      "16-bit float": "1000520",
                      "32-bit float": "1000521",
                      "64-bit integer": "1000522",
@@ -271,11 +147,11 @@ class ImzMLWriter(object):
                      "random_access": "random access",
                      "horizontal_line": "horizontal line scan",
                      "vertical_line": "vertical line scan"}
-        
+
         uuid = ("{%s}" % self.uuid).upper()
         sha1sum = self.sha1.hexdigest().upper()
         run_id = self.run_id
-        if self.mode == 'auto':
+        if self.mode == "auto":
             mode = "processed" if len(self.lru_cache) > 1 else "continuous"
         else:
             mode = self.mode
@@ -287,7 +163,7 @@ class ImzMLWriter(object):
         scan_pattern = self.scan_pattern
         scan_type = self.scan_type
         line_scan_direction = self.line_scan_direction
-        
+
         self.xml.write(self.imzml_template.render(locals()))
 
     def _write_ibd(self, bytes):
@@ -303,7 +179,7 @@ class ImzMLWriter(object):
         return offset, data.shape[0], self._write_ibd(bytes)
 
     def _read_mz(self, mz_offset, mz_len, mz_enc_len):
-        '''reads a mz array from the currently open ibd file'''
+        """reads a mz array from the currently open ibd file"""
         self.ibd.seek(mz_offset)
         data = self.ibd.read(mz_enc_len)
         self.ibd.seek(0, 2)
@@ -311,8 +187,8 @@ class ImzMLWriter(object):
         return tuple(np.fromstring(data, dtype=self.mz_dtype))
 
     def _get_previous_mz(self, mzs):
-        '''given an mz array, return the mz_data (disk location)
-        if the mz array was not previously written, write to disk first'''
+        """given an mz array, return the mz_data (disk location)
+        if the mz array was not previously written, write to disk first"""
         mzs = tuple(mzs)  # must be hashable
         if mzs in self.lru_cache:
             return self.lru_cache[mzs]
@@ -365,14 +241,16 @@ class ImzMLWriter(object):
             raise TypeError("Unknown mode: %s" % self.mode)
         mz_offset, mz_len, mz_enc_len = mz_data
 
-        int_offset, int_len, int_enc_len = self._encode_and_write(intensities, self.intensity_dtype, self.intensity_compression)
+        int_offset, int_len, int_enc_len = self._encode_and_write(intensities, self.intensity_dtype,
+                                                                  self.intensity_compression)
         mz_min = np.min(mzs)
         mz_max = np.max(mzs)
         ix_max = np.argmax(intensities)
         mz_base = mzs[ix_max]
         int_base = intensities[ix_max]
         int_tic = np.sum(intensities)
-        s = _Spectrum(coords, mz_len, mz_offset, mz_enc_len, int_len, int_offset, int_enc_len, mz_min, mz_max, mz_base, int_base, int_tic, userParams)
+        s = _Spectrum(coords, mz_len, mz_offset, mz_enc_len, int_len, int_offset, int_enc_len, mz_min, mz_max, mz_base,
+                      int_base, int_tic, userParams)
         self.spectra.append(s)
 
     def close(self):  # 'close' is a more common use for this
@@ -383,7 +261,7 @@ class ImzMLWriter(object):
         self.finish()
 
     def finish(self):
-        '''alias of close()'''
+        """alias of close()"""
         self.ibd.close()
         self._write_xml()
         self.xml.close()
@@ -398,43 +276,45 @@ class ImzMLWriter(object):
             self.ibd.close()
             self.xml.close()
 
+
 def _main(argv):
     from pyimzml.ImzMLParser import ImzMLParser
-    inputfile = ''
-    outputfile = ''
+    inputfile = ""
+    outputfile = ""
     try:
-        opts, args = getopt.getopt(argv,"hi:o:",["ifile=","ofile="])
+        opts, args = getopt.getopt(argv, "hi:o:", ["ifile=", "ofile="])
     except getopt.GetoptError:
-        print('test.py -i <inputfile> -o <outputfile>')
+        print("test.py -i <inputfile> -o <outputfile>")
         sys.exit(2)
     for opt, arg in opts:
-        if opt == '-h':
-            print('test.py -i <inputfile> -o <outputfile>')
+        if opt == "-h":
+            print("test.py -i <inputfile> -o <outputfile>")
             sys.exit()
         elif opt in ("-i", "--ifile"):
             inputfile = arg
         elif opt in ("-o", "--ofile"):
             outputfile = arg
-    if inputfile == '':
-        print('test.py -i <inputfile> -o <outputfile>')
-        raise IOError('input file not specified')
-    if outputfile=='':
-        outputfile=inputfile+'.imzML'
+    if inputfile == "":
+        print("test.py -i <inputfile> -o <outputfile>")
+        raise IOError("input file not specified")
+    if outputfile == "":
+        outputfile = inputfile + ".imzML"
     imzml = ImzMLParser(inputfile)
     spectra = []
     with ImzMLWriter(outputfile, mz_dtype=np.float32, intensity_dtype=np.float32) as writer:
         for i, coords in enumerate(imzml.coordinates):
-            mzs, intensities = imzml.getspectrum(i)
+            mzs, intensities = imzml.get_spectrum(i)
             writer.addSpectrum(mzs, intensities, coords)
             spectra.append((mzs, intensities, coords))
 
     imzml = ImzMLParser(outputfile)
     spectra2 = []
     for i, coords in enumerate(imzml.coordinates):
-        mzs, intensities = imzml.getspectrum(i)
+        mzs, intensities = imzml.get_spectrum(i)
         spectra2.append((mzs, intensities, coords))
 
     print(spectra[0] == spectra2[0])
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     _main(sys.argv[1:])
