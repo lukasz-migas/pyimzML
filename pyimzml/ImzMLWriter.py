@@ -1,15 +1,18 @@
 from __future__ import print_function
 
+# Standard library imports
 import os
-import numpy as np
 import uuid
 import hashlib
 import sys
 import getopt
 from collections import namedtuple, OrderedDict, defaultdict
 
+# Third-party imports
+import numpy as np
 from wheezy.template import Engine, CoreExtension, DictLoader
 
+# Local imports
 from pyimzml.compression import NoCompression, ZlibCompression
 from pyimzml.template import IMZML_TEMPLATE
 
@@ -23,6 +26,7 @@ class _MaxlenDict(OrderedDict):
         if self.maxlen is not None and len(self) >= self.maxlen:
             self.popitem(0)  # pop oldest
         OrderedDict.__setitem__(self, key, value)
+
 
 # todo: change named tuple to dict and parse xml template properly (i.e. remove hardcoding so parameters can be
 #       optional)
@@ -208,13 +212,13 @@ class ImzMLWriter(object):
         self.lru_cache[mzs] = mz_data
         return mz_data
 
-    def addSpectrum(self, mzs, intensities, coords, userParams=[]):
+    def add_spectrum(self, mz_x, mz_y, coords, userParams=[]):
         """
         Add a mass spectrum to the file.
 
-        :param mz:
+        :param mz_x:
             mz array
-        :param intensities:
+        :param mz_y:
             intensity array
         :param coords:
 
@@ -226,36 +230,38 @@ class ImzMLWriter(object):
         # must be rounded now to allow comparisons to later data
         # but don't waste CPU time in continuous mode since the data will not be used anyway
         if self.mode != "continuous" or self.first_mz is None:
-            mzs = self.mz_compression.rounding(mzs)
-        intensities = self.intensity_compression.rounding(intensities)
+            mz_x = self.mz_compression.rounding(mz_x)
+        mz_y = self.intensity_compression.rounding(mz_y)
 
         if self.mode == "continuous":
             if self.first_mz is None:
-                self.first_mz = self._encode_and_write(mzs, self.mz_dtype, self.mz_compression)
+                self.first_mz = self._encode_and_write(mz_x, self.mz_dtype, self.mz_compression)
             mz_data = self.first_mz
         elif self.mode == "processed":
-            mz_data = self._encode_and_write(mzs, self.mz_dtype, self.mz_compression)
+            mz_data = self._encode_and_write(mz_x, self.mz_dtype, self.mz_compression)
         elif self.mode == "auto":
-            mz_data = self._get_previous_mz(mzs)
+            mz_data = self._get_previous_mz(mz_x)
         else:
             raise TypeError("Unknown mode: %s" % self.mode)
         mz_offset, mz_len, mz_enc_len = mz_data
 
-        int_offset, int_len, int_enc_len = self._encode_and_write(intensities, self.intensity_dtype,
+        int_offset, int_len, int_enc_len = self._encode_and_write(mz_y, self.intensity_dtype,
                                                                   self.intensity_compression)
-        mz_min = np.min(mzs)
-        mz_max = np.max(mzs)
-        ix_max = np.argmax(intensities)
-        mz_base = mzs[ix_max]
-        int_base = intensities[ix_max]
-        int_tic = np.sum(intensities)
+        mz_min = np.min(mz_x)
+        mz_max = np.max(mz_x)
+        ix_max = np.argmax(mz_y)
+        mz_base = mz_x[ix_max]
+        int_base = mz_y[ix_max]
+        int_tic = np.sum(mz_y)
         s = _Spectrum(coords, mz_len, mz_offset, mz_enc_len, int_len, int_offset, int_enc_len, mz_min, mz_max, mz_base,
                       int_base, int_tic, userParams)
         self.spectra.append(s)
 
+    addSpectrum = add_spectrum
+
     def close(self):  # 'close' is a more common use for this
-        """
-        Writes the XML file and closes all files.
+        """Writes the XML file and closes all files.
+
         Will be called automatically if ``with``-pattern is used.
         """
         self.finish()
@@ -304,7 +310,7 @@ def _main(argv):
     with ImzMLWriter(outputfile, mz_dtype=np.float32, intensity_dtype=np.float32) as writer:
         for i, coords in enumerate(imzml.coordinates):
             mzs, intensities = imzml.get_spectrum(i)
-            writer.addSpectrum(mzs, intensities, coords)
+            writer.add_spectrum(mzs, intensities, coords)
             spectra.append((mzs, intensities, coords))
 
     imzml = ImzMLParser(outputfile)

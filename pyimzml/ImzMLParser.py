@@ -16,10 +16,10 @@
 
 # Standard library imports
 from bisect import bisect_left, bisect_right
-import sys
 import re
 from pathlib import Path
 from warnings import warn
+import logging
 
 # Third-party imports
 import numpy as np
@@ -31,12 +31,12 @@ PRECISION_DICT = {
     "64-bit integer": "l",
 }
 SIZE_DICT = {"f": 4, "d": 8, "i": 4, "l": 8}
-INFER_IBD_FROM_IMZML = object()
 
 param_group_elname = "referenceableParamGroup"
 data_processing_elname = "dataProcessing"
 instrument_confid_elname = "instrumentConfiguration"
 
+LOGGER = logging.getLogger(__name__)
 
 def choose_iterparse(parse_lib=None):
     if parse_lib == "ElementTree":
@@ -67,7 +67,7 @@ class ImzMLParser:
     ``__readimzmlmeta`` method.
     """
 
-    def __init__(self, filename, parse_lib=None, ibd_file=INFER_IBD_FROM_IMZML):
+    def __init__(self, filename, parse_lib=None, ibd_file=None):
         """
         Opens the two files corresponding to the file name, reads the entire .imzML
         file and extracts required attributes. Does not read any binary data, yet.
@@ -101,6 +101,7 @@ class ImzMLParser:
 
         # list of all (x,y,z) coordinates as tuples.
         self._n_pixels = None
+        self._idx = 0
         self.coordinates = []
         self.root = None
         self.mzGroupId = (
@@ -108,19 +109,20 @@ class ImzMLParser:
         ) = self.mzPrecision = self.intensityPrecision = None
         self.iterparse = choose_iterparse(parse_lib)
         self.__iter_read_spectrum_meta()
-        if ibd_file is INFER_IBD_FROM_IMZML:
+
+        # get binary data handle
+        if ibd_file is None:
             # name of the binary file
             ibd_filename = self._infer_bin_filename(self.filename)
-            self.m = open(ibd_filename, "rb")
+            self.ibd_handle = open(ibd_filename, "rb")
+        elif isinstance(ibd_file, str):
+            self.ibd_handle = open(ibd_file, "rb")
         else:
-            self.m = ibd_file
+            self.ibd_handle = ibd_file
 
-        # Dict for basic imzML metadata other than those required for reading
-        # spectra. See method __readimzmlmeta()
+        # Dict for basic imzML metadata other than those required for reading spectra. See method __readimzmlmeta()
         self.imzmldict = self.__readimzmlmeta()
-        self.imzmldict["max count of pixels z"] = np.asarray(self.coordinates)[
-            :, 2
-        ].max()
+        self.imzmldict["max count of pixels z"] = np.asarray(self.coordinates)[:, 2].max()
 
     @staticmethod
     def _infer_bin_filename(imzml_path):
@@ -138,8 +140,28 @@ class ImzMLParser:
 
     # system method for use of 'with ... as'
     def __exit__(self, exc_t, exc_v, trace):
-        if self.m is not None:
-            self.m.close()
+        if self.ibd_handle is not None:
+            self.ibd_handle.close()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """Get next spectrum"""
+        idx = self._idx
+        if idx < self.n_pixels:
+            self._idx += 1
+            return self[idx]
+        else:
+            self._idx = 0
+            raise StopIteration
+
+    def __getitem__(self, item):
+        """Retrieve spectrum"""
+        try:
+            return self.get_spectrum(item)
+        except IndexError:
+            LOGGER.warning(f"Could not retrieve {item}")
 
     @property
     def n_pixels(self):
@@ -161,11 +183,7 @@ class ImzMLParser:
         slist = None
         elem_iterator = self.iterparse(self.filename, events=("start", "end"))
 
-        if sys.version_info > (3,):
-            _, self.root = next(elem_iterator)
-        else:
-            _, self.root = elem_iterator.next()
-
+        _, self.root = next(elem_iterator)
         for event, elem in elem_iterator:
             if elem.tag == self.sl + "spectrumList" and event == "start":
                 slist = elem
@@ -386,6 +404,12 @@ class ImzMLParser:
         intensity_array = np.frombuffer(intensity_bytes, dtype=self.intensityPrecision)
         return mz_array, intensity_array
 
+    # add alias
+    getspectrum = get_spectrum
+
+    def get_ion_image(self, mz_value, tol=0.1, z=1, reduce_func=sum):
+        return get_ion_image(self, mz_value, tol, z, reduce_func)
+
     def get_spectrum_as_string(self, index):
         """
         Reads m/z array and intensity array of the spectrum at specified location
@@ -409,10 +433,10 @@ class ImzMLParser:
         lengths = [self.mzLengths[index], self.intensityLengths[index]]
         lengths[0] *= self.sizeDict[self.mzPrecision]
         lengths[1] *= self.sizeDict[self.intensityPrecision]
-        self.m.seek(offsets[0])
-        mz_string = self.m.read(lengths[0])
-        self.m.seek(offsets[1])
-        intensity_string = self.m.read(lengths[1])
+        self.ibd_handle.seek(offsets[0])
+        mz_string = self.ibd_handle.read(lengths[0])
+        self.ibd_handle.seek(offsets[1])
+        intensity_string = self.ibd_handle.read(lengths[1])
         return mz_string, intensity_string
 
     def portable_spectrum_reader(self):
@@ -435,9 +459,7 @@ class ImzMLParser:
 
 
 def get_ion_image(p, mz_value, tol=0.1, z=1, reduce_func=sum):
-    """
-    Get an image representation of the intensity distribution
-    of the ion with specified m/z value.
+    """Get an image representation of the intensity distribution of the ion with specified m/z value.
 
     By default, the intensity values within the tolerance region are summed.
 
@@ -473,9 +495,8 @@ def get_ion_image(p, mz_value, tol=0.1, z=1, reduce_func=sum):
             im[y - 1, x - 1] = reduce_func(ints[min_i : max_i + 1])
     return im
 
-    # keep alias to previously named functions
-    getspectrum = get_spectrum
-    getionimage = get_ion_image
+# keep alias to previously named functions
+getionimage = get_ion_image
 
 
 def browse(p):
