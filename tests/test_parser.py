@@ -10,7 +10,6 @@ from numpy.testing import assert_equal
 
 # Local imports
 from pyimzml.ImzMLParser import ImzMLParser
-from pyimzml.ImzMLParser import _bisect_spectrum
 
 # Example files from https://ms-imaging.org/wp/imzml/example-files-test/
 CONTINUOUS_IMZML_PATH = str(Path(__file__).parent / "data/Example_Continuous.imzML")
@@ -117,6 +116,15 @@ class TestImzMLParser:
     @staticmethod
     @pytest.mark.parametrize("data_path", (CONTINUOUS_IMZML_PATH, PROCESSED_IMZML_PATH))
     @pytest.mark.parametrize("parse_lib", ("lxml", "ElementTree"))
+    def test_parser_get_async_image(data_path, parse_lib):
+        parser = ImzMLParser(data_path, parse_lib=parse_lib)
+        im_normal = parser.get_ion_image(500, 100)
+        im_async = parser.get_async_ion_image(500, 100)
+        assert im_normal.sum() == im_async.sum()
+
+    @staticmethod
+    @pytest.mark.parametrize("data_path", (CONTINUOUS_IMZML_PATH, PROCESSED_IMZML_PATH))
+    @pytest.mark.parametrize("parse_lib", ("lxml", "ElementTree"))
     def test_parser_get_physical_coordinates(data_path, parse_lib):
         parser = ImzMLParser(data_path, parse_lib=parse_lib)
 
@@ -153,16 +161,29 @@ class TestPortableSpectrumReader:
                 assert np.all(mz_x == _mz_x)
                 assert np.all(mz_y == _mz_y)
 
-
-class TestBisect:
     @staticmethod
-    def test_bisect():
-        mz_x = [100.0, 201.89, 201.99, 202.0, 202.01, 202.10000001, 400.0]
-        test_mz = 202.0
-        test_tol = 0.1
-        ix_l, ix_u = _bisect_spectrum(mz_x, test_mz, test_tol)
-        assert ix_l == 2
-        assert ix_u == 4
-        assert ix_l <= ix_u
-        assert mz_x[ix_l] >= test_mz - test_tol
-        assert mz_x[ix_u] <= test_mz + test_tol
+    @pytest.mark.parametrize(
+        "imzml_path, ibd_path",
+        (
+            [CONTINUOUS_IMZML_PATH, CONTINUOUS_IBD_PATH],
+            [PROCESSED_IMZML_PATH, PROCESSED_IBD_PATH],
+        ),
+    )
+    @pytest.mark.parametrize("parse_lib", ("lxml", "ElementTree"))
+    def test_portable_get_spectrum(imzml_path, ibd_path, parse_lib):
+        # get normal parser
+        parser = ImzMLParser(imzml_path, parse_lib=parse_lib)
+
+        # get detached parser and get handle of the portable reader
+        detached_parser = ImzMLParser(imzml_path, parse_lib=parse_lib)
+        portable_reader = detached_parser.portable_spectrum_reader()
+
+        # pickle and unpickle to ensure it survives for its intended use case
+        portable_reader = pickle.loads(pickle.dumps(portable_reader))
+
+        for idx in range(parser.n_pixels):
+            mz_x, mz_y = parser.get_spectrum(idx)
+
+            _mz_x2, _mz_y2 = portable_reader.get_spectrum(idx)
+            assert np.all(mz_x == _mz_x2)
+            assert np.all(mz_y == _mz_y2)

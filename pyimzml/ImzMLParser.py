@@ -16,7 +16,7 @@
 
 # Standard library imports
 import math
-from bisect import bisect_left, bisect_right
+
 import re
 from pathlib import Path
 from warnings import warn
@@ -28,6 +28,12 @@ from concurrent.futures import wait
 # Third-party imports
 import numpy as np
 
+# Local imports
+from pyimzml.utilities import chunks
+from pyimzml.utilities import choose_iterparse
+from pyimzml.utilities import bisect_spectrum
+
+
 PRECISION_DICT = {
     "32-bit float": "f",
     "64-bit float": "d",
@@ -36,27 +42,212 @@ PRECISION_DICT = {
 }
 SIZE_DICT = {"f": 4, "d": 8, "i": 4, "l": 8}
 
-param_group_elname = "referenceableParamGroup"
-data_processing_elname = "dataProcessing"
-instrument_confid_elname = "instrumentConfiguration"
-
 LOGGER = logging.getLogger(__name__)
 
 
-def choose_iterparse(parse_lib=None):
-    if parse_lib == "ElementTree":
-        from xml.etree.ElementTree import iterparse
-    elif parse_lib == "lxml":
-        from lxml.etree import iterparse
-    else:
+class ImzMLParserBase:
+    def __init__(self):
+
+        self.filename = None
+        self.ibd_filename = None
+        self.coordinates = []
+        self.mzOffsets = []
+        self.intensityOffsets = []
+        self.mzLengths = []
+        self.intensityLengths = []
+        self.mzPrecision = None
+        self.intensityPrecision = None
+        self.imzmldict = dict()
+
+        self._idx = 0
+        self._n_pixels = None
+        self._as_threads = None
+        self._pool_size = None
+        self.executor = None
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """Get next spectrum"""
+        idx = self._idx
+        if idx < self.n_pixels:
+            self._idx += 1
+            return self[idx]
+        else:
+            self._idx = 0
+            raise StopIteration
+
+    def __getitem__(self, item):
+        """Retrieve spectrum"""
         try:
-            from lxml.etree import iterparse
-        except ImportError:
-            from xml.etree.ElementTree import iterparse
-    return iterparse
+            return self.get_spectrum(item)
+        except IndexError:
+            LOGGER.warning(f"Could not retrieve {item}")
+
+    @property
+    def n_pixels(self):
+        """Return number of pixels in the dataset"""
+        if self._n_pixels is None:
+            self._n_pixels = len(self.coordinates)
+        return self._n_pixels
+
+    def get_physical_coordinates(self, i):
+        """
+        For a pixel index i, return the real-world coordinates in nanometers.
+
+        This is equivalent to multiplying the image coordinates of the given pixel with the pixel size.
+
+        :param i: the pixel index
+        :return: a tuple of x and y coordinates.
+        :rtype: Tuple[float]
+        :raises KeyError: if the .imzML file does not specify the attributes "pixel size x" and "pixel size y"
+        """
+        try:
+            pixel_size_x = self.imzmldict["pixel size x"]
+            pixel_size_y = self.imzmldict["pixel size y"]
+        except KeyError:
+            raise KeyError("Could not find all pixel size attributes in imzML file")
+        image_x, image_y = self.coordinates[i][:2]
+        return image_x * pixel_size_x, image_y * pixel_size_y
+
+    def get_spectrum(self, index):
+        """
+        Reads the spectrum at specified index from the .ibd file.
+
+        :param index:
+            Index of the desired spectrum in the .imzML file
+
+        Output:
+
+        mz_array: numpy.ndarray
+            Sequence of m/z values representing the horizontal axis of the desired mass
+            spectrum
+        intensity_array: numpy.ndarray
+            Sequence of intensity values corresponding to mz_array
+        """
+        mz_bytes, intensity_bytes = self._read_spectrum(index)
+        mz_array = np.frombuffer(mz_bytes, dtype=self.mzPrecision)
+        intensity_array = np.frombuffer(intensity_bytes, dtype=self.intensityPrecision)
+        return mz_array, intensity_array
+
+    # add alias
+    getspectrum = get_spectrum
+
+    def _read_spectrum(self, index):
+        """
+        Reads m/z array and intensity array of the spectrum at specified location
+        from the binary file as a byte string. The string can be unpacked by the struct
+        module. To get the arrays as numbers, use getspectrum
+
+        :param index:
+            Index of the desired spectrum in the .imzML file
+        :rtype: Tuple[str, str]
+
+        Output:
+
+        mz_string:
+            string where each character represents a byte of the mz array of the
+            spectrum
+        intensity_string:
+            string where each character represents a byte of the intensity array of
+            the spectrum
+        """
+        offsets = [self.mzOffsets[index], self.intensityOffsets[index]]
+        lengths = [self.mzLengths[index], self.intensityLengths[index]]
+        lengths[0] *= SIZE_DICT[self.mzPrecision]
+        lengths[1] *= SIZE_DICT[self.intensityPrecision]
+        with open(self.ibd_filename, "rb") as ibd_handle:
+            ibd_handle.seek(offsets[0])
+            mz_string = ibd_handle.read(lengths[0])
+            ibd_handle.seek(offsets[1])
+            intensity_string = ibd_handle.read(lengths[1])
+
+        return mz_string, intensity_string
+
+    def get_ion_image(self, mz_value, tol=0.1, z=1, reduce_func=sum):
+        """Get an image representation of the intensity distribution of the ion with specified m/z value.
+
+        By default, the intensity values within the tolerance region are summed.
+
+        :param p:
+            the ImzMLParser (or anything else with similar attributes) for the desired dataset
+        :param mz_value:
+            m/z value for which the ion image shall be returned
+        :param tol:
+            Absolute tolerance for the m/z value, such that all ions with values
+            mz_value-|tol| <= x <= mz_value+|tol| are included. Defaults to 0.1
+        :param z:
+            z Value if spectrogram is 3-dimensional.
+        :param reduce_func:
+            the bahaviour for reducing the intensities between mz_value-|tol| and mz_value+|tol| to a single value. Must
+            be a function that takes a sequence as input and outputs a number. By default, the values are summed.
+
+        :return:
+            numpy matrix with each element representing the ion intensity in this
+            pixel. Can be easily plotted with matplotlib
+        """
+        return get_ion_image(self, mz_value, tol, z, reduce_func)
+
+    def get_async_ion_image(self, mz_value, tol=0.1, z=1, reduce_func=sum):
+        """Same as `get_ion_image`, however the action is executed in parallel using Thread/ProcessPool"""
+        # create pickleable object
+        portable = self.portable_spectrum_reader()
+
+        # determine chunksize based on the pool executor
+        chunk_size = math.ceil(self.n_pixels / self._pool_size)
+        futures, start_idx = [], 0
+        for coordinate_chunk in chunks(self.coordinates, chunk_size):
+            futures.append(
+                self.executor.submit(
+                    _get_ion_image,
+                    portable,
+                    mz_value,
+                    tol,
+                    z,
+                    reduce_func,
+                    coordinate_chunk,
+                    start_idx,
+                )
+            )
+            start_idx += len(coordinate_chunk)
+
+        # extract features
+        futures_done, __ = wait(futures)
+
+        # recreate image based on the results
+        im = np.zeros(
+            (
+                self.imzmldict["max count of pixels y"],
+                self.imzmldict["max count of pixels x"],
+            )
+        )
+        for future in futures_done:
+            im += future.result()
+        return im
+
+    def portable_spectrum_reader(self):
+        """
+        Builds a PortableSpectrumReader that holds the coordinates list and spectrum offsets in the .ibd file
+        so that the .ibd file can be read without opening the .imzML file again.
+
+        The PortableSpectrumReader can be safely pickled and unpickled, making it useful for reading the spectra
+        in a distributed environment such as PySpark or PyWren.
+        """
+        return PortableSpectrumReader(
+            self.coordinates,
+            self.mzPrecision,
+            self.mzOffsets,
+            self.mzLengths,
+            self.intensityPrecision,
+            self.intensityOffsets,
+            self.intensityLengths,
+            self.ibd_filename,
+            self.imzmldict,
+        )
 
 
-class ImzMLParser:
+class ImzMLParser(ImzMLParserBase):
     """
     Parser for imzML 1.1.0 files (see specification here:
     http://imzml.org/download/imzml/specifications_imzML1.1.0_RC1.pdf).
@@ -88,6 +279,8 @@ class ImzMLParser:
             File or Buffer Protocol object for the .ibd file. Leave blank to infer it from the imzml filename.
             Set to None if no data from the .ibd file is needed (getspectrum calls will not work)
         """
+        ImzMLParserBase.__init__(self)
+
         # custom map sizes are currently not supported, therefore mapsize is hardcoded.
         mapsize = 0
         # ElementTree requires the schema location for finding tags (why?) but
@@ -101,24 +294,9 @@ class ImzMLParser:
         self.sizeDict = dict(SIZE_DICT)
         self.filename = filename
 
-        self.mzOffsets = []
-        self.intensityOffsets = []
-        self.mzLengths = []
-        self.intensityLengths = []
-        self.byte_array = None
-
-        # list of all (x,y,z) coordinates as tuples.
-        self.coordinates = []
         self.root = None
-        self.mzGroupId = (
-            self.intGroupId
-        ) = self.mzPrecision = self.intensityPrecision = None
+        self.mzGroupId = self.intGroupId = None
         self._parse_lib = parse_lib
-        # self.iterparse = choose_iterparse(parse_lib)
-
-        # setup few attributes
-        self._n_pixels = None
-        self._idx = 0
 
         # select iterator
         self.__iter_read_spectrum_meta()
@@ -165,33 +343,6 @@ class ImzMLParser:
 
     def __exit__(self, exc_t, exc_v, trace):
         """Exit - system method used `with ... as `"""
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        """Get next spectrum"""
-        idx = self._idx
-        if idx < self.n_pixels:
-            self._idx += 1
-            return self[idx]
-        else:
-            self._idx = 0
-            raise StopIteration
-
-    def __getitem__(self, item):
-        """Retrieve spectrum"""
-        try:
-            return self.get_spectrum(item)
-        except IndexError:
-            LOGGER.warning(f"Could not retrieve {item}")
-
-    @property
-    def n_pixels(self):
-        """Return number of pixels in the dataset"""
-        if self._n_pixels is None:
-            self._n_pixels = len(self.coordinates)
-        return self._n_pixels
 
     @staticmethod
     def _infer_bin_filename(imzml_path):
@@ -410,162 +561,6 @@ class ImzMLParser:
         )
         return metadata_dict
 
-    def get_physical_coordinates(self, i):
-        """
-        For a pixel index i, return the real-world coordinates in nanometers.
-
-        This is equivalent to multiplying the image coordinates of the given pixel with the pixel size.
-
-        :param i: the pixel index
-        :return: a tuple of x and y coordinates.
-        :rtype: Tuple[float]
-        :raises KeyError: if the .imzML file does not specify the attributes "pixel size x" and "pixel size y"
-        """
-        try:
-            pixel_size_x = self.imzmldict["pixel size x"]
-            pixel_size_y = self.imzmldict["pixel size y"]
-        except KeyError:
-            raise KeyError("Could not find all pixel size attributes in imzML file")
-        image_x, image_y = self.coordinates[i][:2]
-        return image_x * pixel_size_x, image_y * pixel_size_y
-
-    def get_spectrum(self, index):
-        """
-        Reads the spectrum at specified index from the .ibd file.
-
-        :param index:
-            Index of the desired spectrum in the .imzML file
-
-        Output:
-
-        mz_array: numpy.ndarray
-            Sequence of m/z values representing the horizontal axis of the desired mass
-            spectrum
-        intensity_array: numpy.ndarray
-            Sequence of intensity values corresponding to mz_array
-        """
-        mz_bytes, intensity_bytes = self._read_spectrum(index)
-        mz_array = np.frombuffer(mz_bytes, dtype=self.mzPrecision)
-        intensity_array = np.frombuffer(intensity_bytes, dtype=self.intensityPrecision)
-        return mz_array, intensity_array
-
-    # add alias
-    getspectrum = get_spectrum
-
-    def _read_spectrum(self, index):
-        """
-        Reads m/z array and intensity array of the spectrum at specified location
-        from the binary file as a byte string. The string can be unpacked by the struct
-        module. To get the arrays as numbers, use getspectrum
-
-        :param index:
-            Index of the desired spectrum in the .imzML file
-        :rtype: Tuple[str, str]
-
-        Output:
-
-        mz_string:
-            string where each character represents a byte of the mz array of the
-            spectrum
-        intensity_string:
-            string where each character represents a byte of the intensity array of
-            the spectrum
-        """
-        offsets = [self.mzOffsets[index], self.intensityOffsets[index]]
-        lengths = [self.mzLengths[index], self.intensityLengths[index]]
-        lengths[0] *= self.sizeDict[self.mzPrecision]
-        lengths[1] *= self.sizeDict[self.intensityPrecision]
-        with open(self.ibd_filename, "rb") as ibd_handle:
-            ibd_handle.seek(offsets[0])
-            mz_string = ibd_handle.read(lengths[0])
-            ibd_handle.seek(offsets[1])
-            intensity_string = ibd_handle.read(lengths[1])
-
-        return mz_string, intensity_string
-
-    def get_ion_image(self, mz_value, tol=0.1, z=1, reduce_func=sum):
-        """Get an image representation of the intensity distribution of the ion with specified m/z value.
-
-        By default, the intensity values within the tolerance region are summed.
-
-        :param p:
-            the ImzMLParser (or anything else with similar attributes) for the desired dataset
-        :param mz_value:
-            m/z value for which the ion image shall be returned
-        :param tol:
-            Absolute tolerance for the m/z value, such that all ions with values
-            mz_value-|tol| <= x <= mz_value+|tol| are included. Defaults to 0.1
-        :param z:
-            z Value if spectrogram is 3-dimensional.
-        :param reduce_func:
-            the bahaviour for reducing the intensities between mz_value-|tol| and mz_value+|tol| to a single value. Must
-            be a function that takes a sequence as input and outputs a number. By default, the values are summed.
-
-        :return:
-            numpy matrix with each element representing the ion intensity in this
-            pixel. Can be easily plotted with matplotlib
-        """
-        return get_ion_image(self, mz_value, tol, z, reduce_func)
-
-    def get_async_ion_image(self, mz_value, tol=0.1, z=1, reduce_func=sum):
-        """Same as `get_ion_image`, however the action is executed in parallel using Thread/ProcessPool"""
-        from pyimzml.utilities import chunks
-
-        # create pickleable object
-        portable = self.portable_spectrum_reader()
-
-        # determine chunksize based on the pool executor
-        chunk_size = math.ceil(self.n_pixels / self._pool_size)
-        futures, start_idx = [], 0
-        for coordinate_chunk in chunks(self.coordinates, chunk_size):
-            futures.append(
-                self.executor.submit(
-                    _get_ion_image,
-                    portable,
-                    mz_value,
-                    tol,
-                    z,
-                    reduce_func,
-                    coordinate_chunk,
-                    start_idx,
-                )
-            )
-            start_idx += len(coordinate_chunk)
-
-        # extract features
-        futures_done, __ = wait(futures)
-
-        # recreate image based on the results
-        im = np.zeros(
-            (
-                self.imzmldict["max count of pixels y"],
-                self.imzmldict["max count of pixels x"],
-            )
-        )
-        for future in futures_done:
-            im += future.result()
-        return im
-
-    def portable_spectrum_reader(self):
-        """
-        Builds a PortableSpectrumReader that holds the coordinates list and spectrum offsets in the .ibd file
-        so that the .ibd file can be read without opening the .imzML file again.
-
-        The PortableSpectrumReader can be safely pickled and unpickled, making it useful for reading the spectra
-        in a distributed environment such as PySpark or PyWren.
-        """
-        return PortableSpectrumReader(
-            self.coordinates,
-            self.mzPrecision,
-            self.mzOffsets,
-            self.mzLengths,
-            self.intensityPrecision,
-            self.intensityOffsets,
-            self.intensityLengths,
-            self.ibd_filename,
-            self.imzmldict,
-        )
-
 
 def get_ion_image(p, mz_value, tol=0.1, z=1, reduce_func=sum):
     """Get an image representation of the intensity distribution of the ion with specified m/z value.
@@ -601,7 +596,7 @@ def get_ion_image(p, mz_value, tol=0.1, z=1, reduce_func=sum):
 
         if z_ == z:
             mzs, ints = map(lambda x: np.asarray(x), p.get_spectrum(i))
-            min_i, max_i = _bisect_spectrum(mzs, mz_value, tol)
+            min_i, max_i = bisect_spectrum(mzs, mz_value, tol)
             im[y - 1, x - 1] = reduce_func(ints[min_i : max_i + 1])
     return im
 
@@ -619,7 +614,7 @@ def _get_ion_image(p, mz_value, tol, z, reduce_func, coordinates, start_idx):
             )
         if z_ == z:
             mzs, ints = map(lambda x: np.asarray(x), p.get_spectrum(i))
-            min_i, max_i = _bisect_spectrum(mzs, mz_value, tol)
+            min_i, max_i = bisect_spectrum(mzs, mz_value, tol)
             im[y - 1, x - 1] = reduce_func(ints[min_i : max_i + 1])
     return im
 
@@ -628,121 +623,7 @@ def _get_ion_image(p, mz_value, tol, z, reduce_func, coordinates, start_idx):
 getionimage = get_ion_image
 
 
-def browse(p):
-    """
-    Create a per-spectrum metadata browser for the parser.
-    Usage::
-
-        # get a list of the instrument configurations used in the first pixel
-        instrument_configurations = browse(p).for_spectrum(0).get_ids("instrumentConfiguration")
-
-    Currently, ``instrumentConfiguration``, ``dataProcessing`` and ``referenceableParamGroup`` are supported.
-
-    For browsing all spectra iteratively, you should by all means use **ascending** indices. Doing otherwise can result
-    in quadratic runtime. The following example shows how to retrieve all unique instrumentConfigurations used::
-
-        browser = browse(p)
-        all_config_ids = set()
-        for i, _ in enumerate(p.coordinates):
-            all_config_ids.update(browser.for_spectrum(i).get_ids("instrumentConfiguration"))
-
-    This is a list of ids with which you can find the corresponding ``<instrumentConfiguration>`` tag in the xml tree.
-
-    :param p: the parser
-    :return: the browser
-    """
-    return _ImzMLMetaDataBrowser(p.root, p.filename, p.sl)
-
-
-def _bisect_spectrum(mzs, mz_value, tol):
-    ix_l, ix_u = bisect_left(mzs, mz_value - tol), bisect_right(mzs, mz_value + tol) - 1
-    if ix_l == len(mzs):
-        return len(mzs), len(mzs)
-    if ix_u < 1:
-        return 0, 0
-    if ix_u == len(mzs):
-        ix_u -= 1
-    if mzs[ix_l] < (mz_value - tol):
-        ix_l += 1
-    if mzs[ix_u] > (mz_value + tol):
-        ix_u -= 1
-    return ix_l, ix_u
-
-
-class _ImzMLMetaDataBrowser:
-    def __init__(self, root, fn, sl):
-        self._root = root
-        self._sl = sl
-        self._fn = fn
-        self._iter, self._previous, self._list_elem = None, None, None
-        self.iterparse = choose_iterparse()
-
-    def for_spectrum(self, i):
-        if self._previous is None or i <= self._previous:
-            self._iter = self.iterparse(self._fn, events=("start", "end"))
-        for event, s in self._iter:
-            if s.tag == self._sl + "spectrumList" and event == "start":
-                self._list_elem = s
-            elif s.tag == self._sl + "spectrum" and event == "end":
-                self._list_elem.remove(s)
-                if s.attrib["index"] == str(i):
-                    self._previous = i
-                    return _SpectrumMetaDataBrowser(self._root, self._sl, s)
-
-
-class _SpectrumMetaDataBrowser:
-    def __init__(self, root, sl, spectrum):
-        self._root = root
-        self._sl = sl
-        self._spectrum = spectrum
-
-    def get_ids(self, element):
-        param_methods = {
-            param_group_elname: self._find_referenceable_param_groups,
-            data_processing_elname: self._find_data_processing,
-            instrument_confid_elname: self._find_instrument_configurations,
-        }
-        try:
-            return param_methods[element]()
-        except KeyError as e:
-            raise ValueError("Unsupported element: " + str(element))
-
-    def _find_referenceable_param_groups(self):
-        param_group_refs = self._spectrum.findall(
-            "%sreferenceableParamGroupRef" % self._sl
-        )
-        ids = map(lambda g: g.attrib["ref"], param_group_refs)
-        return ids
-
-    def _find_instrument_configurations(self):
-        ids = None
-        scan_list = self._spectrum.find("%sscanList" % self._sl)
-        if scan_list:
-            scans = scan_list.findall("%sscan[@instrumentConfigurationRef]" % self._sl)
-            ids = map(lambda s: s.attrib["instrumentConfigurationRef"], scans)
-        if not ids:
-            run = self._root.find("%srun")
-            try:
-                return [run.attrib["defaultInstrumentConfigurationRef"]]
-            except KeyError as _:
-                return list()
-        else:
-            return ids
-
-    def _find_data_processing(self):
-        try:
-            return self._spectrum.attrib["dataProcessingRef"]
-        except KeyError as _:
-            spectrum_list = self._root.find(
-                "%srun/%sspectrumList" % tuple(2 * [self._sl])
-            )
-            try:
-                return [spectrum_list.attrib["defaultDataProcessingRef"]]
-            except KeyError as _:
-                return []
-
-
-class PortableSpectrumReader:
+class PortableSpectrumReader(ImzMLParserBase):
     """A pickle-able class for holding the minimal set of data required for reading, without holding any
     references to open files that wouldn't survive pickling"""
 
@@ -758,6 +639,7 @@ class PortableSpectrumReader:
         ibd_filename=None,
         imzmldict=None,
     ):
+        ImzMLParserBase.__init__(self)
         self.coordinates = coordinates
         self.mzPrecision = mzPrecision
         self.mzOffsets = mzOffsets
@@ -805,52 +687,3 @@ class PortableSpectrumReader:
         intensity_array = np.frombuffer(intensity_bytes, dtype=self.intensityPrecision)
 
         return mz_array, intensity_array
-
-    def get_spectrum(self, index):
-        """Reads the spectrum at specified index from the .ibd file.
-
-        :param index:
-            Index of the desired spectrum in the .imzML file
-
-        Output:
-
-        mz_array: numpy.ndarray
-            Sequence of m/z values representing the horizontal axis of the desired mass
-            spectrum
-        intensity_array: numpy.ndarray
-            Sequence of intensity values corresponding to mz_array
-        """
-        mz_bytes, intensity_bytes = self._read_spectrum(index)
-        mz_array = np.frombuffer(mz_bytes, dtype=self.mzPrecision)
-        intensity_array = np.frombuffer(intensity_bytes, dtype=self.intensityPrecision)
-        return mz_array, intensity_array
-
-    def _read_spectrum(self, index):
-        """Reads m/z array and intensity array of the spectrum at specified location
-        from the binary file as a byte string. The string can be unpacked by the struct
-        module. To get the arrays as numbers, use getspectrum
-
-        :param index:
-            Index of the desired spectrum in the .imzML file
-        :rtype: Tuple[str, str]
-
-        Output:
-
-        mz_string:
-            string where each character represents a byte of the mz array of the
-            spectrum
-        intensity_string:
-            string where each character represents a byte of the intensity array of
-            the spectrum
-        """
-        offsets = [self.mzOffsets[index], self.intensityOffsets[index]]
-        lengths = [self.mzLengths[index], self.intensityLengths[index]]
-        lengths[0] *= SIZE_DICT[self.mzPrecision]
-        lengths[1] *= SIZE_DICT[self.intensityPrecision]
-        with open(self.ibd_filename, "rb") as ibd_handle:
-            ibd_handle.seek(offsets[0])
-            mz_string = ibd_handle.read(lengths[0])
-            ibd_handle.seek(offsets[1])
-            intensity_string = ibd_handle.read(lengths[1])
-
-        return mz_string, intensity_string

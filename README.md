@@ -16,19 +16,32 @@ Designed for use with imzML version 1.1.0. Outputs data as python lists and dict
 
 ## What's different from the original version
 
-### Implemented
+### Main changes
+
+- renamed few functions to follow the `snake_case` style. Where appropriate, the old method names remained and alias functions have been created
+- the `PortableSpectrumReader` parser now has nearly identical interface to the `ImzMLParser`. This was done by replacing the
+way binary (`.ibd`) data was read from handle to `with open(FILENAME.ibd) as ibd_handle` meaning that it can be easily pickled. This also enables 
+multicore support to ion image extraction
+- moved the `browse` and the two classes to separate file as it didn't fit with the parsers
+- the `ImzMLParser` now has two additonal keyword parameters (`as_threads` and `pool_size` which control how multicore/thread)
+data is read
+- the `ImzMLParser` no longer uses handles to the `ibd_file` but simply extracts the filename (attribute `.name`) and handles
+it like that 
+
+### Implemented so far
 
 - changed the test framework
 - added GitHub workflows for CI testing
 - changed few method names
 - tidied-up code and renamed few unclear variables
+- multi-thread/core support for extracting ion images (see `get_async_ion_image`)
 
-### Planned
+### Planned features
 
-- multi-thread/core support for extracting ion images
 - speed-up XML parsing (if possible?)
 - add support for parsing compressed imzML files as currently decompression is omitted by the parser
-- changed the structure of byte offset arrays to single 2D array
+- changed the structure of byte offset arrays to single 2D array - somewhat tricky since we do not know the number of pixels
+in the the dataset so pre-allocation of large array is not convenient
 
 ## Installation
 
