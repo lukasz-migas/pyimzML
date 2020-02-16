@@ -3,18 +3,19 @@
 import os
 
 import numpy as np
+
 # Third-party imports
 import pytest
 from numpy.testing import assert_array_almost_equal
 
 from pyimzml.ImzMLParser import ImzMLParser
+
 # Local imports
 from pyimzml.ImzMLWriter import ImzMLWriter
 from pyimzml.compression import NoCompression, ZlibCompression
 
 
 class TestImzMLWriter:
-
     @staticmethod
     def test_writer_single_pixel(get_temp_path):
         mz_x = np.linspace(100, 1000, 20)
@@ -32,16 +33,21 @@ class TestImzMLWriter:
             assert parser.n_pixels == 1
 
     @staticmethod
-    @pytest.mark.parametrize("compression", (NoCompression(), ZlibCompression()))
+    @pytest.mark.parametrize(
+        "compression", (NoCompression(), ZlibCompression(), None, "None", "zlib")
+    )
     def test_writer_with_compression(get_temp_path, compression):
         mz_x = np.linspace(100, 1000, 20)
         mz_y = np.random.rand(mz_x.shape[0])
         coordinates = [1, 1, 1]
 
         output_filename = os.path.join(get_temp_path, "test.imzML")
-        with ImzMLWriter(output_filename, mode="processed",
-                         mz_compression=compression,
-                         intensity_compression=compression) as imzml:
+        with ImzMLWriter(
+            output_filename,
+            mode="processed",
+            mz_compression=compression,
+            intensity_compression=compression,
+        ) as imzml:
             imzml.add_spectrum(mz_x, mz_y, coords=coordinates)
 
     @staticmethod
@@ -53,7 +59,10 @@ class TestImzMLWriter:
 
         output_filename = os.path.join(get_temp_path, "test.imzML")
         compression = ZlibCompression(round_digits)
-        with ImzMLWriter(output_filename, mode="processed",
-                         mz_compression=compression,
-                         intensity_compression=compression) as imzml:
+        with ImzMLWriter(
+            output_filename,
+            mode="processed",
+            mz_compression=compression,
+            intensity_compression=compression,
+        ) as imzml:
             imzml.add_spectrum(mz_x, mz_y, coords=coordinates)

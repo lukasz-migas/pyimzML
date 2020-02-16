@@ -38,6 +38,7 @@ instrument_confid_elname = "instrumentConfiguration"
 
 LOGGER = logging.getLogger(__name__)
 
+
 def choose_iterparse(parse_lib=None):
     if parse_lib == "ElementTree":
         from xml.etree.ElementTree import iterparse
@@ -98,7 +99,6 @@ class ImzMLParser:
         self.mzLengths = []
         self.intensityLengths = []
 
-
         # list of all (x,y,z) coordinates as tuples.
         self._n_pixels = None
         self._idx = 0
@@ -122,7 +122,9 @@ class ImzMLParser:
 
         # Dict for basic imzML metadata other than those required for reading spectra. See method __readimzmlmeta()
         self.imzmldict = self.__readimzmlmeta()
-        self.imzmldict["max count of pixels z"] = np.asarray(self.coordinates)[:, 2].max()
+        self.imzmldict["max count of pixels z"] = np.asarray(self.coordinates)[
+            :, 2
+        ].max()
 
     @staticmethod
     def _infer_bin_filename(imzml_path):
@@ -203,6 +205,7 @@ class ImzMLParser:
 
     def __fix_offsets(self):
         """Fix errors introduced by incorrect signed 32bit integers when unsigned 64bit was appropriate"""
+
         def fix(array):
             fixed = []
             delta = 0
@@ -304,12 +307,11 @@ class ImzMLParser:
         :raises Warning:
             if an xml attribute has a number format different from the imzML specification
         """
+
         def check_meta(param, accession, elem_list):
             for idx, _ in enumerate(param):
                 acc, attr = accession[idx]
-                elem = elem_list.find(
-                    './/%scvParam[@accession="%s"]' % (self.sl, acc)
-                )
+                elem = elem_list.find('.//%scvParam[@accession="%s"]' % (self.sl, acc))
                 if elem is None:
                     break
                 name, T = param[idx]
@@ -362,7 +364,9 @@ class ImzMLParser:
             ("MS:1000848", "value"),
         ]
         check_meta(supported_params_1, supported_accession_1, scan_settings_list_elem)
-        check_meta(supported_params_2, supported_accession_2, instrument_config_list_elem)
+        check_meta(
+            supported_params_2, supported_accession_2, instrument_config_list_elem
+        )
         return metadata_dict
 
     def get_physical_coordinates(self, i):
@@ -494,6 +498,7 @@ def get_ion_image(p, mz_value, tol=0.1, z=1, reduce_func=sum):
             min_i, max_i = _bisect_spectrum(mzs, mz_value, tol)
             im[y - 1, x - 1] = reduce_func(ints[min_i : max_i + 1])
     return im
+
 
 # keep alias to previously named functions
 getionimage = get_ion_image

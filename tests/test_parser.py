@@ -13,10 +13,10 @@ from pyimzml.ImzMLParser import ImzMLParser
 from pyimzml.ImzMLParser import _bisect_spectrum
 
 # Example files from https://ms-imaging.org/wp/imzml/example-files-test/
-CONTINUOUS_IMZML_PATH = str(Path(__file__).parent / 'data/Example_Continuous.imzML')
-CONTINUOUS_IBD_PATH = str(Path(__file__).parent / 'data/Example_Continuous.ibd')
-PROCESSED_IMZML_PATH = str(Path(__file__).parent / 'data/Example_Processed.imzML')
-PROCESSED_IBD_PATH = str(Path(__file__).parent / 'data/Example_Processed.ibd')
+CONTINUOUS_IMZML_PATH = str(Path(__file__).parent / "data/Example_Continuous.imzML")
+CONTINUOUS_IBD_PATH = str(Path(__file__).parent / "data/Example_Continuous.ibd")
+PROCESSED_IMZML_PATH = str(Path(__file__).parent / "data/Example_Processed.imzML")
+PROCESSED_IBD_PATH = str(Path(__file__).parent / "data/Example_Processed.ibd")
 
 
 class TestImzMLParser:
@@ -56,12 +56,19 @@ class TestImzMLParser:
             assert len(mz_y) > 0
 
     @staticmethod
-    @pytest.mark.parametrize("imzml_path, ibd_path", ([CONTINUOUS_IMZML_PATH, CONTINUOUS_IBD_PATH],
-                                                      [PROCESSED_IMZML_PATH, PROCESSED_IBD_PATH]))
+    @pytest.mark.parametrize(
+        "imzml_path, ibd_path",
+        (
+            [CONTINUOUS_IMZML_PATH, CONTINUOUS_IBD_PATH],
+            [PROCESSED_IMZML_PATH, PROCESSED_IBD_PATH],
+        ),
+    )
     @pytest.mark.parametrize("parse_lib", ("lxml", "ElementTree"))
     def test_parser_init_ibd_as_file(imzml_path, ibd_path, parse_lib):
         with open(ibd_path, "rb") as ibd_file:
-            with ImzMLParser(imzml_path, parse_lib=parse_lib, ibd_file=ibd_file) as parser:
+            with ImzMLParser(
+                imzml_path, parse_lib=parse_lib, ibd_file=ibd_file
+            ) as parser:
                 assert len(parser.coordinates) == 9
                 assert parser.n_pixels == 9
 
@@ -114,15 +121,19 @@ class TestImzMLParser:
         parser = ImzMLParser(data_path, parse_lib=parse_lib)
 
         x, y = parser.get_physical_coordinates(0)
-        assert x == 100.
-        assert y == 100.
+        assert x == 100.0
+        assert y == 100.0
 
 
 class TestPortableSpectrumReader:
-
     @staticmethod
-    @pytest.mark.parametrize("imzml_path, ibd_path", ([CONTINUOUS_IMZML_PATH, CONTINUOUS_IBD_PATH],
-                                                      [PROCESSED_IMZML_PATH, PROCESSED_IBD_PATH]))
+    @pytest.mark.parametrize(
+        "imzml_path, ibd_path",
+        (
+            [CONTINUOUS_IMZML_PATH, CONTINUOUS_IBD_PATH],
+            [PROCESSED_IMZML_PATH, PROCESSED_IBD_PATH],
+        ),
+    )
     @pytest.mark.parametrize("parse_lib", ("lxml", "ElementTree"))
     def test_portable_init(imzml_path, ibd_path, parse_lib):
         # get normal parser
@@ -146,7 +157,7 @@ class TestPortableSpectrumReader:
 class TestBisect:
     @staticmethod
     def test_bisect():
-        mz_x = [100., 201.89, 201.99, 202.0, 202.01, 202.10000001, 400.]
+        mz_x = [100.0, 201.89, 201.99, 202.0, 202.01, 202.10000001, 400.0]
         test_mz = 202.0
         test_tol = 0.1
         ix_l, ix_u = _bisect_spectrum(mz_x, test_mz, test_tol)

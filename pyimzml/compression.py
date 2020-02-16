@@ -28,6 +28,7 @@ class ZlibCompression(object):
     :param round_amt:
         Number of digits after comma. None means no rounding.
     """
+
     name = "zlib compression"
 
     def __init__(self, round_amt=None):

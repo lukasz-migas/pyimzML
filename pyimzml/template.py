@@ -1,3 +1,4 @@
+# flake8: noqa
 IMZML_TEMPLATE = """\
 @require(uuid, sha1sum, mz_data_type, int_data_type, run_id, spectra, mode, obo_codes, obo_names, mz_compression, int_compression, polarity, spec_type, scan_direction, scan_pattern, scan_type, line_scan_direction)
 <?xml version="1.0" encoding="ISO-8859-1"?>
@@ -105,7 +106,7 @@ IMZML_TEMPLATE = """\
             @end
             @if s.userParams:
                 @for up in s.userParams:
-                <userParam name="@up['name']" value="@up['value']"/> 
+                <userParam name="@up['name']" value="@up['value']"/>
                 @end
             @end
           </scan>
