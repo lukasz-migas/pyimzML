@@ -4,8 +4,6 @@ from __future__ import print_function
 import os
 import uuid
 import hashlib
-import sys
-import getopt
 from collections import namedtuple, OrderedDict, defaultdict
 
 # Third-party imports
@@ -122,6 +120,16 @@ class ImzMLWriter(object):
             maxlen=10
         )  # mz_array (as tuple) -> mz_data (disk location)
         self._setPolarity(polarity)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_t, exc_v, trace):
+        if exc_t is None:
+            self.finish()
+        else:
+            self.ibd.close()
+            self.xml.close()
 
     @staticmethod
     def _np_type_to_name(dtype):
@@ -322,59 +330,3 @@ class ImzMLWriter(object):
         self.ibd.close()
         self._write_xml()
         self.xml.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_t, exc_v, trace):
-        if exc_t is None:
-            self.finish()
-        else:
-            self.ibd.close()
-            self.xml.close()
-
-
-def _main(argv):
-    from pyimzml.ImzMLParser import ImzMLParser
-
-    inputfile = ""
-    outputfile = ""
-    try:
-        opts, args = getopt.getopt(argv, "hi:o:", ["ifile=", "ofile="])
-    except getopt.GetoptError:
-        print("test.py -i <inputfile> -o <outputfile>")
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == "-h":
-            print("test.py -i <inputfile> -o <outputfile>")
-            sys.exit()
-        elif opt in ("-i", "--ifile"):
-            inputfile = arg
-        elif opt in ("-o", "--ofile"):
-            outputfile = arg
-    if inputfile == "":
-        print("test.py -i <inputfile> -o <outputfile>")
-        raise IOError("input file not specified")
-    if outputfile == "":
-        outputfile = inputfile + ".imzML"
-    imzml = ImzMLParser(inputfile)
-    spectra = []
-    with ImzMLWriter(
-        outputfile, mz_dtype=np.float32, intensity_dtype=np.float32
-    ) as writer:
-        for i, coords in enumerate(imzml.coordinates):
-            mzs, intensities = imzml.get_spectrum(i)
-            writer.add_spectrum(mzs, intensities, coords)
-            spectra.append((mzs, intensities, coords))
-
-    imzml = ImzMLParser(outputfile)
-    spectra2 = []
-    for i, coords in enumerate(imzml.coordinates):
-        mzs, intensities = imzml.get_spectrum(i)
-        spectra2.append((mzs, intensities, coords))
-
-    print(spectra[0] == spectra2[0])
-
-
-if __name__ == "__main__":
-    _main(sys.argv[1:])

@@ -33,6 +33,35 @@ class TestImzMLWriter:
             assert parser.n_pixels == 1
 
     @staticmethod
+    @pytest.mark.parametrize("data_mode", ("processed", "continuous"))
+    def test_writer_image(get_temp_path, data_mode):
+        """Test adding image to the dataset"""
+        mz_x = np.linspace(100, 1000, 20)
+        coordinates = [
+            [1, 1, 1],
+            [1, 2, 1],
+            [1, 3, 1],
+            [2, 1, 1],
+            [2, 2, 1],
+            [2, 3, 1],
+            [3, 1, 1],
+            [3, 2, 1],
+            [3, 3, 1],
+        ]
+        mz_ys = np.random.rand(len(coordinates), mz_x.shape[0])
+
+        output_filename = os.path.join(get_temp_path, "test.imzML")
+        with ImzMLWriter(output_filename, mode=data_mode) as imzml:
+            for mz_y, _coordinates in zip(mz_ys, coordinates):
+                imzml.add_spectrum(mz_x, mz_y, coords=_coordinates)
+
+        with ImzMLParser(output_filename) as parser:
+            for px, (_mz_x, _mz_y) in enumerate(parser):
+                assert_array_almost_equal(_mz_x, mz_x, 4)
+                assert_array_almost_equal(_mz_y, mz_ys[px], 4)
+                assert parser.n_pixels == len(coordinates)
+
+    @staticmethod
     @pytest.mark.parametrize(
         "compression", (NoCompression(), ZlibCompression(), None, "None", "zlib")
     )

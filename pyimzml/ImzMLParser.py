@@ -14,16 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Feb 2020 - modified by Lukasz G. Migas
+
 # Standard library imports
 import math
-
+import time
 import re
 from pathlib import Path
 from warnings import warn
-import logging
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import wait
+import logging
 
 # Third-party imports
 import numpy as np
@@ -32,6 +34,7 @@ import numpy as np
 from pyimzml.utilities import chunks
 from pyimzml.utilities import choose_iterparse
 from pyimzml.utilities import bisect_spectrum
+from pyimzml.utilities import format_time
 
 
 PRECISION_DICT = {
@@ -126,9 +129,11 @@ class ImzMLParserBase:
         intensity_array: numpy.ndarray
             Sequence of intensity values corresponding to mz_array
         """
+        t_start = time.time()
         mz_bytes, intensity_bytes = self._read_spectrum(index)
         mz_array = np.frombuffer(mz_bytes, dtype=self.mzPrecision)
         intensity_array = np.frombuffer(intensity_bytes, dtype=self.intensityPrecision)
+        LOGGER.debug(f"Retrieved spectrum in {format_time(time.time()-t_start)}")
         return mz_array, intensity_array
 
     # add alias
@@ -191,6 +196,7 @@ class ImzMLParserBase:
 
     def get_async_ion_image(self, mz_value, tol=0.1, z=1, reduce_func=sum):
         """Same as `get_ion_image`, however the action is executed in parallel using Thread/ProcessPool"""
+        t_start = time.time()
         # create pickleable object
         portable = self.portable_spectrum_reader()
 
@@ -224,6 +230,7 @@ class ImzMLParserBase:
         )
         for future in futures_done:
             im += future.result()
+        LOGGER.debug(f"Retrieved ion image in {format_time(time.time() - t_start)}")
         return im
 
     def portable_spectrum_reader(self):
@@ -280,7 +287,7 @@ class ImzMLParser(ImzMLParserBase):
             Set to None if no data from the .ibd file is needed (getspectrum calls will not work)
         """
         ImzMLParserBase.__init__(self)
-
+        t_start = time.time()
         # custom map sizes are currently not supported, therefore mapsize is hardcoded.
         mapsize = 0
         # ElementTree requires the schema location for finding tags (why?) but
@@ -333,6 +340,7 @@ class ImzMLParser(ImzMLParserBase):
             else ProcessPoolExecutor(self._pool_size)
         )
         self.root = None
+        LOGGER.debug(f"Initilized parser in {format_time(time.time()-t_start)}")
 
     def __repr__(self):
         return f"ImzMLParser<filename: {self.filename}; no. pixels: {self.n_pixels}>"
@@ -389,6 +397,7 @@ class ImzMLParser(ImzMLParserBase):
         # cleanup
         self.__assign_precision(int_group, mz_group)
         self.__fix_offsets()
+        LOGGER.debug("Setup metadata")
 
     def __fix_offsets(self):
         """Fix errors introduced by incorrect signed 32bit integers when unsigned 64bit was appropriate"""
@@ -406,6 +415,7 @@ class ImzMLParser(ImzMLParserBase):
 
         self.mzOffsets = fix(self.mzOffsets)
         self.intensityOffsets = fix(self.intensityOffsets)
+        LOGGER.debug("Fixed offsets")
 
     def __assign_precision(self, int_group, mz_group):
         valid_accession_strings = (
@@ -433,6 +443,7 @@ class ImzMLParser(ImzMLParserBase):
                 % (mz_precision, int_precision)
             )
         self.mzPrecision, self.intensityPrecision = mz_precision, int_precision
+        LOGGER.debug("Setup precision")
 
     def __process_spectrum(self, elem):
         array_list_item = elem.find("%sbinaryDataArrayList" % self.sl)
@@ -584,6 +595,7 @@ def get_ion_image(p, mz_value, tol=0.1, z=1, reduce_func=sum):
         numpy matrix with each element representing the ion intensity in this
         pixel. Can be easily plotted with matplotlib
     """
+    t_start = time.time()
     tol = abs(tol)
     im = np.zeros(
         (p.imzmldict["max count of pixels y"], p.imzmldict["max count of pixels x"])
@@ -598,6 +610,7 @@ def get_ion_image(p, mz_value, tol=0.1, z=1, reduce_func=sum):
             mzs, ints = map(lambda x: np.asarray(x), p.get_spectrum(i))
             min_i, max_i = bisect_spectrum(mzs, mz_value, tol)
             im[y - 1, x - 1] = reduce_func(ints[min_i : max_i + 1])
+    LOGGER.debug(f"Retrieved ion image in {format_time(time.time() - t_start)}")
     return im
 
 

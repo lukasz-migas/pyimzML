@@ -35,3 +35,18 @@ def bisect_spectrum(mzs, mz_value, tol):
     if mzs[ix_u] > (mz_value + tol):
         ix_u -= 1
     return ix_l, ix_u
+
+
+def format_time(value: float) -> str:
+    """Convert time to nicer format"""
+    if value <= 0.01:
+        return f"{value * 1000000:.0f}us"
+    elif value <= 0.1:
+        return f"{value * 1000:.1f}ms"
+    elif value > 86400:
+        return f"{value / 86400:.2f}day"
+    elif value > 1800:
+        return f"{value / 3600:.2f}hr"
+    elif value > 60:
+        return f"{value / 60:.2f}min"
+    return f"{value:.2f}s"
