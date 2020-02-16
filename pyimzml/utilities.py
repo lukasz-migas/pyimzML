@@ -43,6 +43,8 @@ def format_time(value: float) -> str:
         return f"{value * 1000000:.0f}us"
     elif value <= 0.1:
         return f"{value * 1000:.1f}ms"
+    elif value > 172800:
+        return f"{value / 86400:.2f}days"
     elif value > 86400:
         return f"{value / 86400:.2f}day"
     elif value > 1800:

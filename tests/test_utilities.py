@@ -30,6 +30,8 @@ class TestBisect:
         (60, "s"),
         (75, "min"),
         (3654, "hr"),
+        (125414, "day"),
+        (325414, "days"),
     ],
 )
 def test_format_time(value, expected):

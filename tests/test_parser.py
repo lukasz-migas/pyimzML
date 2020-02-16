@@ -77,6 +77,25 @@ class TestImzMLParser:
                 assert len(mz_y) > 0
 
     @staticmethod
+    @pytest.mark.parametrize(
+        "imzml_path, ibd_path",
+        (
+            [CONTINUOUS_IMZML_PATH, CONTINUOUS_IBD_PATH],
+            [PROCESSED_IMZML_PATH, PROCESSED_IBD_PATH],
+        ),
+    )
+    @pytest.mark.parametrize("parse_lib", ("lxml", "ElementTree"))
+    def test_parser_init_ibd_as_filename(imzml_path, ibd_path, parse_lib):
+        with ImzMLParser(imzml_path, parse_lib=parse_lib, ibd_file=ibd_path) as parser:
+            assert len(parser.coordinates) == 9
+            assert parser.n_pixels == 9
+
+            mz_x, mz_y = parser.get_spectrum(0)
+            assert len(mz_x) == len(mz_y)
+            assert len(mz_x) > 0
+            assert len(mz_y) > 0
+
+    @staticmethod
     @pytest.mark.parametrize("data_path", (CONTINUOUS_IMZML_PATH, PROCESSED_IMZML_PATH))
     @pytest.mark.parametrize("parse_lib", ("lxml", "ElementTree"))
     def test_parser_get_spectrum(data_path, parse_lib):

@@ -81,7 +81,7 @@ class _SpectrumMetaDataBrowser:
     def _find_instrument_configurations(self):
         ids = None
         scan_list = self._spectrum.find("%sscanList" % self._sl)
-        if scan_list:
+        if scan_list is not None:
             scans = scan_list.findall("%sscan[@instrumentConfigurationRef]" % self._sl)
             ids = map(lambda s: s.attrib["instrumentConfigurationRef"], scans)
         if not ids:

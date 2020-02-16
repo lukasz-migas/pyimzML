@@ -663,14 +663,6 @@ class PortableSpectrumReader(ImzMLParserBase):
 
         self.ibd_filename = ibd_filename
         self.imzmldict = imzmldict
-        self._n_pixels = None
-
-    @property
-    def n_pixels(self):
-        """Return number of pixels in the dataset"""
-        if self._n_pixels is None:
-            self._n_pixels = len(self.coordinates)
-        return self._n_pixels
 
     def read_spectrum_from_file(self, file, index):
         """

@@ -12,7 +12,8 @@ from pyimzml.ImzMLParser import ImzMLParser
 
 # Local imports
 from pyimzml.ImzMLWriter import ImzMLWriter
-from pyimzml.compression import NoCompression, ZlibCompression
+from pyimzml.compression import NoCompression
+from pyimzml.compression import ZlibCompression
 
 
 class TestImzMLWriter:
@@ -33,7 +34,7 @@ class TestImzMLWriter:
             assert parser.n_pixels == 1
 
     @staticmethod
-    @pytest.mark.parametrize("data_mode", ("processed", "continuous"))
+    @pytest.mark.parametrize("data_mode", ("processed", "continuous", "auto"))
     def test_writer_image(get_temp_path, data_mode):
         """Test adding image to the dataset"""
         mz_x = np.linspace(100, 1000, 20)
