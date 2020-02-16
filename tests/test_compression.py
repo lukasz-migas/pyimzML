@@ -21,7 +21,7 @@ class TestNoCompression:
     @staticmethod
     def test_compress_int():
         count = 100
-        array = np.random.randint(0, 1000, count)
+        array = np.random.randint(0, 1000, count, dtype=np.int32)
         compressor = NoCompression()
         compressed = compressor.compress(array.tobytes())
         decompressed = np.frombuffer(
@@ -43,7 +43,7 @@ class TestZlibCompression:
     @staticmethod
     def test_compress_int():
         count = 100
-        array = np.random.randint(0, 1000, count)
+        array = np.random.randint(0, 1000, count, dtype=np.int32)
         compressor = ZlibCompression()
         compressed = compressor.compress(array.tobytes())
         decompressed = np.frombuffer(
