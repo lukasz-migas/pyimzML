@@ -3,6 +3,9 @@
 [![Build Status](https://readthedocs.org/projects/pyimzml/badge/?version=latest&style=flat)](https://readthedocs.org/projects/pyimzml/badge/?version=latest)
 ![Tests](https://github.com/lukasz-migas/pyimzML/workflows/Tests/badge.svg)
 ![Style](https://github.com/lukasz-migas/pyimzML/workflows/Style/badge.svg)
+[![codecov](https://codecov.io/gh/lukasz-migas/pyimzML/branch/master/graph/badge.svg)](https://codecov.io/gh/lukasz-migas/pyimzML)
+
+
 
 **FORK**: [https://github.com/alexandrovteam/pyimzML](https://github.com/alexandrovteam/pyimzML)
 
