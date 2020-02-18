@@ -3,8 +3,8 @@
 [![Build Status](https://readthedocs.org/projects/pyimzml/badge/?version=latest&style=flat)](https://readthedocs.org/projects/pyimzml/badge/?version=latest)
 ![Tests](https://github.com/lukasz-migas/pyimzML/workflows/Tests/badge.svg)
 ![Style](https://github.com/lukasz-migas/pyimzML/workflows/Style/badge.svg)
+[![Requirements Status](https://requires.io/github/lukasz-migas/pyimzML/requirements.svg?branch=master)](https://requires.io/github/lukasz-migas/pyimzML/requirements/?branch=master)
 [![codecov](https://codecov.io/gh/lukasz-migas/pyimzML/branch/master/graph/badge.svg)](https://codecov.io/gh/lukasz-migas/pyimzML)
-
 
 
 **FORK**: [https://github.com/alexandrovteam/pyimzML](https://github.com/alexandrovteam/pyimzML)
@@ -26,7 +26,7 @@ Designed for use with imzML version 1.1.0. Outputs data as python lists and dict
 way binary (`.ibd`) data was read from handle to `with open(FILENAME.ibd) as ibd_handle` meaning that it can be easily pickled. This also enables 
 multicore support to ion image extraction
 - moved the `browse` and the two classes to separate file as it didn't fit with the parsers
-- the `ImzMLParser` now has two additonal keyword parameters (`as_threads` and `pool_size` which control how multicore/thread)
+- the `ImzMLParser` now has two additional keyword parameters (`as_threads` and `pool_size` which control how multicore/thread)
 data is read
 - the `ImzMLParser` no longer uses handles to the `ibd_file` but simply extracts the filename (attribute `.name`) and handles
 it like that 
@@ -43,7 +43,7 @@ it like that
 
 - speed-up XML parsing (if possible?)
 - add support for parsing compressed imzML files as currently decompression is omitted by the parser
-- changed the structure of byte offset arrays to single 2D array - somewhat tricky since we do not know the number of pixels
+- change the structure of byte offset arrays to single 2D array - somewhat tricky since we do not know the number of pixels
 in the the dataset so pre-allocation of large array is not convenient
 
 ## Installation
