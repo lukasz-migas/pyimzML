@@ -140,8 +140,11 @@ class ImzMLWriter(object):
 
     def _setPolarity(self, polarity):
         if polarity:
-            if polarity.lower() in ["positive", "negative"]:
-                self.polarity = polarity.lower()
+            polarity = polarity.lower()
+            # match alternative values - not exhaustive list of course
+            polarity = {"+ve": "positive", "+": "positive", "-ve": "negative", "-": "negative"}.get(polarity, polarity)
+            if polarity in ["positive", "negative"]:
+                self.polarity = polarity
             else:
                 raise ValueError(
                     "value for polarity must be one of 'positive', 'negative'. Received: {}".format(

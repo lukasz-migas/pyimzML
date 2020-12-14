@@ -46,7 +46,7 @@ PRECISION_DICT = {
 SIZE_DICT = {"f": 4, "d": 8, "i": 4, "l": 8}
 
 LOGGER = logging.getLogger(__name__)
-
+LOGGER.setLevel(logging.WARNING)  # disable debug logging by default
 
 class ImzMLParserBase:
     def __init__(self):
